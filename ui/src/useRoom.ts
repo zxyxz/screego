@@ -330,6 +330,7 @@ export const useRoom = (config: UIConfig): UseRoom => {
         }
         stream.current = await navigator.mediaDevices.getDisplayMedia({
             video: {frameRate: loadSettings().framerate},
+            audio: true,
         });
         stream.current?.getVideoTracks()[0].addEventListener('ended', () => stopShare());
         setState((current) => (current ? {...current, hostStream: stream.current} : current));
