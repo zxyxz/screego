@@ -143,11 +143,13 @@ const clientSession = async ({
             done();
         }
     };
+    const stream = new MediaStream();
     peer.ontrack = (event) => {
-        const stream = new MediaStream();
+
         stream.addTrack(event.track);
-        onTrack(stream);
+
     };
+    onTrack(stream);
 
     return peer;
 };
