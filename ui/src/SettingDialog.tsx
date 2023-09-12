@@ -117,7 +117,7 @@ export const SettingDialog = ({open, setOpen, updateName, saveSettings}: Setting
                             onChange={(_, value) =>
                                 setSettingsInput((c) => ({
                                     ...c,
-                                    videoResolution: value ?? VideoResolution.P1080,
+                                    videoResolution: value ?? VideoResolution.DEFAULT,
                                 }))
                             }
                             value={videoResolution}

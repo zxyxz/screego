@@ -6,7 +6,8 @@ import {
     loadSettings,
     resolveCodecPlaceholder,
     resolveVideoResolutionHeight,
-    resolveVideoResolutionWidth
+    resolveVideoResolutionWidth,
+    VideoResolution
 } from './settings';
 import {urlWithSlash} from './url';
 import {authModeToRoomMode} from './useConfig';
@@ -326,7 +327,7 @@ export const useRoom = (config: UIConfig): UseRoom => {
             return;
         }
         stream.current = await navigator.mediaDevices.getDisplayMedia({
-            video: {
+            video: loadSettings().videoResolution == VideoResolution.DEFAULT ? {frameRate: loadSettings().framerate,} : {
                 frameRate: loadSettings().framerate,
                 width: resolveVideoResolutionWidth(loadSettings().videoResolution),
                 height: resolveVideoResolutionHeight(loadSettings().videoResolution),

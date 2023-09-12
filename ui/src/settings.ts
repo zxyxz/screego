@@ -55,20 +55,24 @@ export enum VideoDisplayMode {
 }
 
 export enum VideoResolution {
-    P1080 = '1080P',
-    P720 = '720P',
-    P576 = '576P',
-    P480 = '480P'
+    DEFAULT = 'Browser Default',
+    P1440= '2560*1440P',
+    P1080 = '1920*1080P',
+    P720 = '1280*720P',
+    P540 = '960*540P',
+    P480 = '640*480P'
 }
 
 export const resolveVideoResolutionWidth = (codec: VideoResolution | undefined): number => {
     switch (codec) {
+        case VideoResolution.P1440:
+            return 1440;
         case VideoResolution.P1080:
             return 1080;
         case VideoResolution.P720:
             return 720;
-        case VideoResolution.P576:
-            return 576;
+        case VideoResolution.P540:
+            return 540;
         case VideoResolution.P480:
             return 480;
         default:
@@ -78,12 +82,14 @@ export const resolveVideoResolutionWidth = (codec: VideoResolution | undefined):
 
 export const resolveVideoResolutionHeight = (codec: VideoResolution | undefined): number => {
     switch (codec) {
+        case VideoResolution.P1440:
+            return 2560;
         case VideoResolution.P1080:
             return 1920;
         case VideoResolution.P720:
             return 1080;
-        case VideoResolution.P576:
-            return 1024;
+        case VideoResolution.P540:
+            return 960;
         case VideoResolution.P480:
             return 640;
         default:
@@ -102,7 +108,7 @@ export const loadSettings = (): Settings => {
         framerate: 30,
         noiseSuppression: false,
         echoCancellation: false,
-        videoResolution: VideoResolution.P1080,
+        videoResolution: VideoResolution.DEFAULT,
     };
 
     if (settings && typeof settings === 'object') {
