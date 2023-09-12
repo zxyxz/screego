@@ -7,7 +7,7 @@ import {
     DialogActions,
     Button,
     Autocomplete,
-    Box,
+    Box, Switch,
 } from '@mui/material';
 import {
     CodecBestQuality,
@@ -16,7 +16,7 @@ import {
     loadSettings,
     PreferredCodec,
     Settings,
-    VideoDisplayMode,
+    VideoDisplayMode, VideoResolution,
 } from './settings';
 import {NumberField} from './NumberField';
 
@@ -45,7 +45,7 @@ export const SettingDialog = ({open, setOpen, updateName, saveSettings}: Setting
         setOpen(false);
     };
 
-    const {name, preferCodec, displayMode, framerate} = settingsInput;
+    const {name, preferCodec, displayMode, framerate,echoCancellation,noiseSuppression,videoResolution} = settingsInput;
 
     return (
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth={'xs'} fullWidth>
@@ -110,6 +110,36 @@ export const SettingDialog = ({open, setOpen, updateName, saveSettings}: Setting
                             value={framerate}
                             fullWidth
                         />
+                    </Box>
+                    <Box paddingTop={1}>
+                        <Autocomplete<VideoResolution>
+                            options={Object.values(VideoResolution)}
+                            onChange={(_, value) =>
+                                setSettingsInput((c) => ({
+                                    ...c,
+                                    videoResolution: value ?? VideoResolution.P1080,
+                                }))
+                            }
+                            value={videoResolution}
+                            fullWidth
+                            renderInput={(params) => <TextField {...params} label="Video Resolution" />}
+                        />
+                    </Box>
+                    <Box paddingTop={1}>
+                        echoCancellation(回声消除) <Switch
+                            onChange={(e) =>
+                                setSettingsInput((c) => ({...c, echoCancellation: e.target.checked}))
+                            }
+                            checked={echoCancellation}
+                        />
+                    </Box>
+                    <Box paddingTop={1}>
+                        noiseSuppression(噪声抑制) <Switch
+                        onChange={(e) =>
+                            setSettingsInput((c) => ({...c, noiseSuppression: e.target.checked}))
+                        }
+                        checked={noiseSuppression}
+                    />
                     </Box>
                 </form>
             </DialogContent>

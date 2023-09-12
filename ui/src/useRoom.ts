@@ -1,16 +1,13 @@
 import {useSnackbar} from 'notistack';
 import React from 'react';
 
+import {ICEServer, IncomingMessage, JoinRoom, OutgoingMessage, RoomCreate, RoomInfo, UIConfig,} from './message';
 import {
-    ICEServer,
-    IncomingMessage,
-    JoinRoom,
-    OutgoingMessage,
-    RoomCreate,
-    RoomInfo,
-    UIConfig,
-} from './message';
-import {loadSettings, resolveCodecPlaceholder} from './settings';
+    loadSettings,
+    resolveCodecPlaceholder,
+    resolveVideoResolutionHeight,
+    resolveVideoResolutionWidth
+} from './settings';
 import {urlWithSlash} from './url';
 import {authModeToRoomMode} from './useConfig';
 import {getFromURL, useRoomID} from './useRoomID';
@@ -40,12 +37,12 @@ const relayConfig: Partial<RTCConfiguration> =
     window.location.search.indexOf('forceTurn=true') !== -1 ? {iceTransportPolicy: 'relay'} : {};
 
 const hostSession = async ({
-    sid,
-    ice,
-    send,
-    done,
-    stream,
-}: {
+                               sid,
+                               ice,
+                               send,
+                               done,
+                               stream,
+                           }: {
     sid: string;
     ice: ICEServer[];
     send: (e: OutgoingMessage) => void;
@@ -112,12 +109,12 @@ const hostSession = async ({
 };
 
 const clientSession = async ({
-    sid,
-    ice,
-    send,
-    done,
-    onTrack,
-}: {
+                                 sid,
+                                 ice,
+                                 send,
+                                 done,
+                                 onTrack,
+                             }: {
     sid: string;
     ice: ICEServer[];
     send: (e: OutgoingMessage) => void;
@@ -223,11 +220,11 @@ export const useRoom = (config: UIConfig): UseRoom => {
                                     setState((current) =>
                                         current
                                             ? {
-                                                  ...current,
-                                                  clientStreams: current.clientStreams.filter(
-                                                      ({id}) => id !== sid
-                                                  ),
-                                              }
+                                                ...current,
+                                                clientStreams: current.clientStreams.filter(
+                                                    ({id}) => id !== sid
+                                                ),
+                                            }
                                             : current
                                     );
                                 },
@@ -235,16 +232,16 @@ export const useRoom = (config: UIConfig): UseRoom => {
                                     setState((current) =>
                                         current
                                             ? {
-                                                  ...current,
-                                                  clientStreams: [
-                                                      ...current.clientStreams,
-                                                      {
-                                                          id: sid,
-                                                          stream,
-                                                          peer_id: peer,
-                                                      },
-                                                  ],
-                                              }
+                                                ...current,
+                                                clientStreams: [
+                                                    ...current.clientStreams,
+                                                    {
+                                                        id: sid,
+                                                        stream,
+                                                        peer_id: peer,
+                                                    },
+                                                ],
+                                            }
                                             : current
                                     ),
                             }).then((peer) => (client.current[event.payload.id] = peer));
@@ -264,7 +261,7 @@ export const useRoom = (config: UIConfig): UseRoom => {
                                 );
                                 const answer = await client.current[
                                     event.payload.sid
-                                ]?.createAnswer();
+                                    ]?.createAnswer();
                                 await client.current[event.payload.sid]?.setLocalDescription(
                                     answer
                                 );
@@ -283,11 +280,11 @@ export const useRoom = (config: UIConfig): UseRoom => {
                             setState((current) =>
                                 current
                                     ? {
-                                          ...current,
-                                          clientStreams: current.clientStreams.filter(
-                                              ({id}) => id !== event.payload
-                                          ),
-                                      }
+                                        ...current,
+                                        clientStreams: current.clientStreams.filter(
+                                            ({id}) => id !== event.payload
+                                        ),
+                                    }
                                     : current
                             );
                     }
@@ -329,8 +326,15 @@ export const useRoom = (config: UIConfig): UseRoom => {
             return;
         }
         stream.current = await navigator.mediaDevices.getDisplayMedia({
-            video: {frameRate: loadSettings().framerate},
-            audio: true,
+            video: {
+                frameRate: loadSettings().framerate,
+                width: resolveVideoResolutionWidth(loadSettings().videoResolution),
+                height: resolveVideoResolutionHeight(loadSettings().videoResolution),
+            },
+            audio: {
+                echoCancellation: loadSettings().echoCancellation,
+                noiseSuppression: loadSettings().noiseSuppression,
+            },
         });
         stream.current?.getVideoTracks()[0].addEventListener('ended', () => stopShare());
         setState((current) => (current ? {...current, hostStream: stream.current} : current));

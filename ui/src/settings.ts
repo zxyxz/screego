@@ -38,6 +38,9 @@ export interface Settings {
     displayMode: VideoDisplayMode;
     preferCodec?: PreferredCodec;
     framerate: number;
+    echoCancellation: boolean;
+    noiseSuppression: boolean;
+    videoResolution?: VideoResolution;
 }
 export interface PreferredCodec {
     mimeType: string;
@@ -51,6 +54,44 @@ export enum VideoDisplayMode {
     OriginalSize = 'OriginalSize',
 }
 
+export enum VideoResolution {
+    P1080 = '1080P',
+    P720 = '720P',
+    P576 = '576P',
+    P480 = '480P'
+}
+
+export const resolveVideoResolutionWidth = (codec: VideoResolution | undefined): number => {
+    switch (codec) {
+        case VideoResolution.P1080:
+            return 1080;
+        case VideoResolution.P720:
+            return 720;
+        case VideoResolution.P576:
+            return 576;
+        case VideoResolution.P480:
+            return 480;
+        default:
+            return 1080;
+    }
+};
+
+export const resolveVideoResolutionHeight = (codec: VideoResolution | undefined): number => {
+    switch (codec) {
+        case VideoResolution.P1080:
+            return 1920;
+        case VideoResolution.P720:
+            return 1080;
+        case VideoResolution.P576:
+            return 1024;
+        case VideoResolution.P480:
+            return 640;
+        default:
+            return 1920;
+    }
+};
+
+
 const SettingsKey = 'screegoSettings';
 
 export const loadSettings = (): Settings => {
@@ -59,6 +100,9 @@ export const loadSettings = (): Settings => {
     const defaults: Settings = {
         displayMode: VideoDisplayMode.FitToWindow,
         framerate: 30,
+        noiseSuppression: false,
+        echoCancellation: false,
+        videoResolution: VideoResolution.P1080,
     };
 
     if (settings && typeof settings === 'object') {
@@ -69,6 +113,11 @@ export const loadSettings = (): Settings => {
                 Object.values(VideoDisplayMode).find((mode) => mode === settings.displayMode) ??
                 defaults.displayMode,
             preferCodec: settings.preferCodec ?? CodecDefault,
+            noiseSuppression: settings.noiseSuppression ?? defaults.noiseSuppression,
+            echoCancellation: settings.echoCancellation ?? defaults.echoCancellation,
+            videoResolution:
+                Object.values(VideoResolution).find((mode) => mode === settings.videoResolution) ??
+                defaults.videoResolution,
         };
     }
     return defaults;
