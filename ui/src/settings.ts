@@ -58,6 +58,9 @@ export enum VideoResolution {
     DEFAULT = 'Browser Default',
     P1440= '2560*1440P',
     P1080 = '1920*1080P',
+    P990 = '1760*990P',
+    P900 = '1600*900P',
+    P810 = '1440*810P',
     P720 = '1280*720P',
     P540 = '960*540P',
     P480 = '640*480P'
@@ -69,6 +72,12 @@ export const resolveVideoResolutionWidth = (codec: VideoResolution | undefined):
             return 1440;
         case VideoResolution.P1080:
             return 1080;
+        case VideoResolution.P990:
+            return 990;
+        case VideoResolution.P900:
+            return 900;
+        case VideoResolution.P810:
+            return 810;
         case VideoResolution.P720:
             return 720;
         case VideoResolution.P540:
@@ -86,6 +95,12 @@ export const resolveVideoResolutionHeight = (codec: VideoResolution | undefined)
             return 2560;
         case VideoResolution.P1080:
             return 1920;
+        case VideoResolution.P990:
+            return 1760;
+        case VideoResolution.P900:
+            return 1600;
+        case VideoResolution.P810:
+            return 1440;
         case VideoResolution.P720:
             return 1080;
         case VideoResolution.P540:
