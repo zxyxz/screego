@@ -338,6 +338,7 @@ export const useRoom = (config: UIConfig): UseRoom => {
             },
         });
         stream.current?.getVideoTracks()[0].addEventListener('ended', () => stopShare());
+        stream.current?.getTracks().forEach((track) => {if ('contentHint' in track) track.contentHint="motion"})
         setState((current) => (current ? {...current, hostStream: stream.current} : current));
 
         conn.current?.send(JSON.stringify({type: 'share', payload: {}}));
