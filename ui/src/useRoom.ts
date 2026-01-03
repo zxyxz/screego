@@ -346,6 +346,14 @@ export const useRoom = (config: UIConfig): UseRoom => {
                     googAutoGainControl: false,
                 },
             });
+
+            if (stream.current) {
+                const videoTrack = stream.current.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.contentHint = 'motion';
+                }
+            }
+
         } catch (e) {
             console.log('Could not getDisplayMedia', e);
             enqueueSnackbar(`Could not start presentation. (getDisplayMedia error). ${e}`, {
