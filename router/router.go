@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/screego/server/auth"
 	"github.com/screego/server/config"
+	"github.com/screego/server/live"
 	"github.com/screego/server/ui"
 	"github.com/screego/server/ws"
 )
@@ -29,9 +30,10 @@ type UIConfig struct {
 	Version                  string `json:"version"`
 	RoomName                 string `json:"roomName"`
 	CloseRoomWhenOwnerLeaves bool   `json:"closeRoomWhenOwnerLeaves"`
+	LiveBandwidthMbps        int    `json:"liveBandwidthMbps"`
 }
 
-func Router(conf config.Config, rooms *ws.Rooms, users *auth.Users, version string) *mux.Router {
+func Router(conf config.Config, rooms *ws.Rooms, users *auth.Users, version string, liveHub *live.Hub) *mux.Router {
 	router := mux.NewRouter()
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// https://github.com/gorilla/mux/issues/416
@@ -40,6 +42,7 @@ func Router(conf config.Config, rooms *ws.Rooms, users *auth.Users, version stri
 	router.Use(hlog.AccessHandler(accessLogger))
 	router.Use(handlers.CORS(handlers.AllowedMethods([]string{"GET", "POST"}), handlers.AllowedOriginValidator(conf.CheckOrigin)))
 	router.HandleFunc("/stream", rooms.Upgrade)
+	router.HandleFunc("/live/ws", liveHub.Upgrade)
 	router.Methods("POST").Path("/login").HandlerFunc(users.Authenticate)
 	router.Methods("POST").Path("/logout").HandlerFunc(users.Logout)
 	router.Methods("GET").Path("/config").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +54,7 @@ func Router(conf config.Config, rooms *ws.Rooms, users *auth.Users, version stri
 			Version:                  version,
 			RoomName:                 rooms.RandRoomName(),
 			CloseRoomWhenOwnerLeaves: conf.CloseRoomWhenOwnerLeaves,
+			LiveBandwidthMbps:        conf.LiveBandwidthMbps,
 		})
 	})
 	router.Methods("GET").Path("/health").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -12,6 +12,7 @@ export interface UIConfig {
     version: string;
     roomName: string;
     closeRoomWhenOwnerLeaves: boolean;
+    liveBandwidthMbps: number;
 }
 
 export interface RoomConfiguration {
@@ -54,6 +55,12 @@ export interface RoomInfo {
     share: ShareMode;
     mode: RoomMode;
     users: RoomUser[];
+    live?: RoomLiveState | null;
+}
+
+export interface RoomLiveState {
+    viewerToken: string;
+    self: boolean;
 }
 
 export interface RoomUser {
@@ -78,11 +85,12 @@ export type HostICECandidate = Typed<P2PMessage<RTCIceCandidate>, 'hostice'>;
 export type ClientICECandidate = Typed<P2PMessage<RTCIceCandidate>, 'clientice'>;
 export type HostOffer = Typed<P2PMessage<RTCSessionDescriptionInit>, 'hostoffer'>;
 export type ClientAnswer = Typed<P2PMessage<RTCSessionDescriptionInit>, 'clientanswer'>;
-export type StartSharing = Typed<{}, 'share'>;
+export type StartSharing = Typed<{mode?: 'realtime' | 'live'}, 'share'>;
 export type StopShare = Typed<{}, 'stopshare'>;
 export type RoomCreate = Typed<RoomConfiguration & {joinIfExist?: boolean}, 'create'>;
 export type JoinRoom = Typed<JoinConfiguration, 'join'>;
 export type EndShare = Typed<string, 'endshare'>;
+export type LiveHostSession = Typed<{id: string; token: string}, 'livehostsession'>;
 
 export type IncomingMessage =
     | Room
@@ -93,6 +101,7 @@ export type IncomingMessage =
     | ClientICECandidate
     | HostOffer
     | EndShare
+    | LiveHostSession
     | ClientAnswer;
 
 export type OutgoingMessage =

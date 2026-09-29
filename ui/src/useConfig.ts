@@ -20,6 +20,7 @@ export const useConfig = (): UseConfig => {
         version: 'unknown',
         roomName: 'unknown',
         closeRoomWhenOwnerLeaves: true,
+        liveBandwidthMbps: 4,
     });
 
     const refetch = React.useCallback(async () => {
@@ -35,20 +36,20 @@ export const useConfig = (): UseConfig => {
         const result = await fetch(`${urlWithSlash}login`, {method: 'POST', body});
         const json = await result.json();
         if (result.status !== 200) {
-            enqueueSnackbar('Login Failed: ' + json.message, {variant: 'error'});
+            enqueueSnackbar('登录失败：' + json.message, {variant: 'error'});
         } else {
             await refetch();
-            enqueueSnackbar('Logged in!', {variant: 'success'});
+            enqueueSnackbar('登录成功！', {variant: 'success'});
         }
     };
 
     const logout = async () => {
         const result = await fetch(`${urlWithSlash}logout`, {method: 'POST'});
         if (result.status !== 200) {
-            enqueueSnackbar('Logout Failed: ' + (await result.text()), {variant: 'error'});
+            enqueueSnackbar('退出登录失败：' + (await result.text()), {variant: 'error'});
         } else {
             await refetch();
-            enqueueSnackbar('Logged Out.', {variant: 'success'});
+            enqueueSnackbar('已退出登录。', {variant: 'success'});
         }
     };
 

@@ -12,11 +12,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/screego/server/auth"
 	"github.com/screego/server/config"
+	"github.com/screego/server/live"
 	"github.com/screego/server/turn"
 	"github.com/screego/server/util"
 )
 
-func NewRooms(tServer turn.Server, users *auth.Users, conf config.Config) *Rooms {
+func NewRooms(tServer turn.Server, users *auth.Users, conf config.Config, liveHub *live.Hub) *Rooms {
 	return &Rooms{
 		Rooms:      map[string]*Room{},
 		Incoming:   make(chan ClientMessage),
@@ -24,6 +25,7 @@ func NewRooms(tServer turn.Server, users *auth.Users, conf config.Config) *Rooms
 		turnServer: tServer,
 		users:      users,
 		config:     conf,
+		live:       liveHub,
 		r:          rand.New(rand.NewSource(time.Now().Unix())),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -50,6 +52,7 @@ type Rooms struct {
 	upgrader   websocket.Upgrader
 	users      *auth.Users
 	config     config.Config
+	live       *live.Hub
 	r          *rand.Rand
 	connected  map[xid.ID]string
 }
@@ -128,6 +131,7 @@ func (r *Rooms) Count() (int, string) {
 }
 
 func (r *Rooms) closeRoom(roomID string) {
+	r.live.Stop(roomID)
 	room, ok := r.Rooms[roomID]
 	if !ok {
 		return

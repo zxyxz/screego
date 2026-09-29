@@ -14,6 +14,24 @@ type Room struct {
 	ID    string         `json:"id"`
 	Mode  ConnectionMode `json:"mode"`
 	Users []User         `json:"users"`
+	Live  *LiveState     `json:"live,omitempty"`
+}
+
+// LiveState is broadcast to all room members while a live share runs. The
+// viewer token authorizes connecting to the live relay; Self marks the
+// member that is pushing the stream.
+type LiveState struct {
+	ViewerToken string `json:"viewerToken"`
+	Self        bool   `json:"self"`
+}
+
+type LiveHostSession struct {
+	ID    string `json:"id"`
+	Token string `json:"token"`
+}
+
+func (LiveHostSession) Type() string {
+	return "livehostsession"
 }
 
 type User struct {

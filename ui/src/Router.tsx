@@ -17,7 +17,7 @@ const RouterLoadedConfig = ({config}: {config: UseConfig}) => {
     const {room, state, ...other} = useRoom(config);
 
     if (state) {
-        return <Room state={state} {...other} />;
+        return <Room state={state} config={config} {...other} />;
     }
 
     return <RoomManage room={room} config={config} />;

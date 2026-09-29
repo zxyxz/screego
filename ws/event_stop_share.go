@@ -21,6 +21,10 @@ func (e *StopShare) Execute(rooms *Rooms, current ClientInfo) error {
 	}
 
 	room.Users[current.ID].Streaming = false
+	if room.Live != nil && room.Live.HostID == current.ID {
+		rooms.live.Stop(room.ID)
+		room.Live = nil
+	}
 	for id, session := range room.Sessions {
 		if bytes.Equal(session.Host.Bytes(), current.ID.Bytes()) {
 			client, ok := room.Users[session.Client]

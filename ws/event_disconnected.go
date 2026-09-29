@@ -42,6 +42,11 @@ func (e *Disconnected) executeNoError(rooms *Rooms, current ClientInfo) {
 	delete(room.Users, current.ID)
 	usersLeftTotal.Inc()
 
+	if room.Live != nil && room.Live.HostID == current.ID {
+		rooms.live.Stop(roomID)
+		room.Live = nil
+	}
+
 	for id, session := range room.Sessions {
 		if bytes.Equal(session.Client.Bytes(), current.ID.Bytes()) {
 			host, ok := room.Users[session.Host]

@@ -1,5 +1,18 @@
 import React, {useCallback} from 'react';
-import {Badge, Box, IconButton, Paper, Tooltip, Typography, Slider, Stack} from '@mui/material';
+import {
+    Badge,
+    Box,
+    Button,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    IconButton,
+    Paper,
+    Tooltip,
+    Typography,
+    Slider,
+    Stack,
+} from '@mui/material';
 import CancelPresentationIcon from '@mui/icons-material/CancelPresentation';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
 import FullScreenIcon from '@mui/icons-material/Fullscreen';
@@ -12,22 +25,24 @@ import {Video} from './Video';
 import {makeStyles} from 'tss-react/mui';
 import {ConnectedRoom} from './useRoom';
 import {useSnackbar} from 'notistack';
-import {RoomUser} from './message';
+import {RoomUser, UIConfig} from './message';
 import {useSettings, VideoDisplayMode} from './settings';
 import {SettingDialog} from './SettingDialog';
+import {LivePlayer} from './live/player';
+import {LivePushStats} from './live/encoder';
 
 const HostStream: unique symbol = Symbol('mystream');
 
 const flags = (user: RoomUser) => {
     const result: string[] = [];
     if (user.you) {
-        result.push('You');
+        result.push('我');
     }
     if (user.owner) {
-        result.push('Owner');
+        result.push('房主');
     }
     if (user.streaming) {
-        result.push('Streaming');
+        result.push('正在共享');
     }
     if (!result.length) {
         return '';
@@ -55,23 +70,41 @@ const requestFullscreen = (element: FullScreenHTMLVideoElement | null) => {
 
 export const Room = ({
     state,
+    config,
     share,
     stopShare,
     setName,
+    reconnecting,
+    liveStats,
 }: {
     state: ConnectedRoom;
-    share: () => void;
+    config: UIConfig;
+    share: (mode?: 'realtime' | 'live') => Promise<void>;
     stopShare: () => void;
     setName: (name: string) => void;
+    reconnecting?: boolean;
+    liveStats?: LivePushStats;
 }) => {
     const {classes} = useStyles();
     const [open, setOpen] = React.useState(false);
+    const [shareDialog, setShareDialog] = React.useState(false);
     const {enqueueSnackbar} = useSnackbar();
     const [settings, setSettings] = useSettings();
     const [showControl, setShowControl] = React.useState(true);
     const [hoverControl, setHoverControl] = React.useState(false);
     const [selectedStream, setSelectedStream] = React.useState<string | typeof HostStream>();
     const [videoElement, setVideoElement] = React.useState<FullScreenHTMLVideoElement | null>(null);
+
+    const startShare = (mode: 'realtime' | 'live') => {
+        setShareDialog(false);
+        share(mode).catch((e) =>
+            enqueueSnackbar(`共享失败：${e}`, {variant: 'error', persist: true})
+        );
+    };
+
+    // A live share owned by somebody else is rendered by LivePlayer, which has
+    // no WebRTC stream and therefore no `selectedStream`.
+    const liveActive = !!(state.live && !state.live.self);
 
     useShowOnMouseMovement(setShowControl);
 
@@ -115,8 +148,8 @@ export const Room = ({
 
     const copyLink = () => {
         navigator?.clipboard?.writeText(window.location.href)?.then(
-            () => enqueueSnackbar('Link Copied', {variant: 'success'}),
-            (err) => enqueueSnackbar('Copy Failed ' + err, {variant: 'error'})
+            () => enqueueSnackbar('链接已复制', {variant: 'success'}),
+            (err) => enqueueSnackbar('复制失败 ' + err, {variant: 'error'})
         );
     };
 
@@ -130,15 +163,17 @@ export const Room = ({
 
     const controlVisible = showControl || open || hoverControl;
 
-    useHotkeys('s', () => (state.hostStream ? stopShare() : share()), [state.hostStream]);
+    useHotkeys('s', () => (state.hostStream ? stopShare() : setShareDialog(true)), [
+        state.hostStream,
+    ]);
     useHotkeys(
         'f',
         () => {
-            if (selectedStream) {
+            if (selectedStream || liveActive) {
                 handleFullscreen();
             }
         },
-        [handleFullscreen, selectedStream]
+        [handleFullscreen, selectedStream, liveActive]
     );
     useHotkeys('c', copyLink);
     useHotkeys(
@@ -196,11 +231,30 @@ export const Room = ({
         }
     };
 
+    // Surface whether the media path bypasses the server: relayed connections
+    // are bounded by the server's bandwidth (often just a few Mbps).
+    const selectedClientStream = state.clientStreams.find(({id}) => selectedStream === id);
+    let connectionHint: string | undefined;
+    let connectionHintRelayed = false;
+    if (state.hostStream) {
+        if (state.relayed !== undefined) {
+            connectionHintRelayed = state.relayed;
+            connectionHint = state.relayed
+                ? '连接：经服务器中继（画质受服务器带宽限制）'
+                : '连接：直连（不经过服务器）';
+        }
+    } else if (selectedClientStream?.relayed !== undefined) {
+        connectionHintRelayed = selectedClientStream.relayed;
+        connectionHint = selectedClientStream.relayed
+            ? '连接：经服务器中继（画质受服务器带宽限制）'
+            : '连接：直连（不经过服务器）';
+    }
+
     return (
         <div className={classes.videoContainer}>
             {controlVisible && (
                 <Paper className={classes.title} elevation={10} {...setHoverState}>
-                    <Tooltip title="Copy Link">
+                    <Tooltip title="复制链接">
                         <Typography
                             variant="h4"
                             component="h4"
@@ -210,6 +264,54 @@ export const Room = ({
                             {state.id}
                         </Typography>
                     </Tooltip>
+                    {connectionHint && (
+                        <Typography
+                            variant="body2"
+                            style={{color: connectionHintRelayed ? '#ffb74d' : '#9e9e9e'}}
+                        >
+                            {connectionHint}
+                        </Typography>
+                    )}
+                </Paper>
+            )}
+
+            {state.hostStream && liveStats && (
+                <Typography
+                    variant="body2"
+                    style={{
+                        position: 'absolute',
+                        top: 12,
+                        right: 12,
+                        color: '#9e9e9e',
+                        background: 'rgba(0,0,0,.55)',
+                        padding: '2px 8px',
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        zIndex: 20,
+                    }}
+                >
+                    推流：采集 {liveStats.capturedFps}fps → 编码 {liveStats.fps}fps ｜{' '}
+                    {liveStats.mbps.toFixed(1)} Mbps ｜ 队列 {liveStats.queue} ｜ 丢帧{' '}
+                    {liveStats.droppedFps}/s
+                </Typography>
+            )}
+
+            {reconnecting && (
+                <Paper
+                    elevation={10}
+                    style={{
+                        position: 'absolute',
+                        top: 12,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        padding: '6px 14px',
+                        backgroundColor: '#ff9800',
+                        zIndex: 20,
+                    }}
+                >
+                    <Typography variant="body2" style={{color: '#000'}}>
+                        与服务器的连接已断开，正在重连…
+                    </Typography>
                 </Paper>
             )}
 
@@ -218,6 +320,12 @@ export const Room = ({
                     ref={setVideoElement}
                     className={videoClasses()}
                     onDoubleClick={handleFullscreen}
+                />
+            ) : state.live && !state.live.self ? (
+                <LivePlayer
+                    roomID={state.id}
+                    token={state.live.viewerToken}
+                    onVideoElement={setVideoElement}
                 />
             ) : (
                 <Typography
@@ -231,7 +339,9 @@ export const Room = ({
                         transform: 'translate(-50%, -50%)',
                     }}
                 >
-                    no stream available
+                    {reconnecting
+                        ? '与服务器的连接已断开，正在重连…'
+                        : '暂无可观看的画面（等待主播开始共享）'}
                 </Typography>
             )}
 
@@ -242,14 +352,14 @@ export const Room = ({
                     )}
                     <Box whiteSpace="nowrap">
                         {state.hostStream ? (
-                            <Tooltip title="Cancel Presentation" arrow>
+                            <Tooltip title="停止共享" arrow>
                                 <IconButton onClick={stopShare} size="large">
                                     <CancelPresentationIcon fontSize="large" />
                                 </IconButton>
                             </Tooltip>
                         ) : (
-                            <Tooltip title="Start Presentation" arrow>
-                                <IconButton onClick={share} size="large">
+                            <Tooltip title="开始共享" arrow>
+                                <IconButton onClick={() => setShareDialog(true)} size="large">
                                     <PresentToAllIcon fontSize="large" />
                                 </IconButton>
                             </Tooltip>
@@ -259,7 +369,7 @@ export const Room = ({
                             classes={{tooltip: classes.noMaxWidth}}
                             title={
                                 <div>
-                                    <Typography variant="h5">Member List</Typography>
+                                    <Typography variant="h5">成员列表</Typography>
                                     {state.users.map((user) => (
                                         <Typography key={user.id}>
                                             {user.name} {flags(user)}
@@ -273,17 +383,17 @@ export const Room = ({
                                 <PeopleIcon fontSize="large" />
                             </Badge>
                         </Tooltip>
-                        <Tooltip title="Fullscreen" arrow>
+                        <Tooltip title="全屏" arrow>
                             <IconButton
                                 onClick={() => handleFullscreen()}
-                                disabled={!selectedStream}
+                                disabled={!selectedStream && !liveActive}
                                 size="large"
                             >
                                 <FullScreenIcon fontSize="large" />
                             </IconButton>
                         </Tooltip>
 
-                        <Tooltip title="Settings" arrow>
+                        <Tooltip title="设置" arrow>
                             <IconButton onClick={() => setOpen(true)} size="large">
                                 <SettingsIcon fontSize="large" />
                             </IconButton>
@@ -315,7 +425,7 @@ export const Room = ({
                                     className={classes.smallVideoLabel}
                                 >
                                     {state.users.find(({id}) => client.peer_id === id)?.name ??
-                                        'unknown'}
+                                        '未知用户'}
                                 </Typography>
                             </Paper>
                         );
@@ -333,7 +443,7 @@ export const Room = ({
                             align="center"
                             className={classes.smallVideoLabel}
                         >
-                            You
+                            我
                         </Typography>
                     </Paper>
                 )}
@@ -342,7 +452,33 @@ export const Room = ({
                     setOpen={setOpen}
                     updateName={setName}
                     saveSettings={setSettings}
+                    serverLiveBandwidthMbps={config.liveBandwidthMbps || 4}
                 />
+                <Dialog
+                    open={shareDialog}
+                    onClose={() => setShareDialog(false)}
+                    maxWidth="xs"
+                    fullWidth
+                >
+                    <DialogTitle>选择共享方式</DialogTitle>
+                    <DialogContent>
+                        <Button
+                            fullWidth
+                            variant="contained"
+                            color="primary"
+                            style={{marginBottom: 8}}
+                            onClick={() => startShare('live')}
+                        >
+                            直播共享（推荐）：延迟约 3-5 秒，更流畅清晰
+                        </Button>
+                        <Button fullWidth variant="outlined" onClick={() => startShare('realtime')}>
+                            实时共享：延迟最低，适合需要即时互动的场景
+                        </Button>
+                        <Typography variant="body2" color="textSecondary" style={{marginTop: 8}}>
+                            直播共享经服务器分发，观众数量不影响画质，设置保持默认即可。
+                        </Typography>
+                    </DialogContent>
+                </Dialog>
             </div>
         </div>
     );

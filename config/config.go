@@ -68,6 +68,11 @@ type Config struct {
 	TurnDenyPeersParsed []*net.IPNet `ignored:"true"`
 
 	CloseRoomWhenOwnerLeaves bool `default:"true" split_words:"true"`
+
+	// LiveBandwidthMbps is the default bitrate (Mbps) for live shares. Live
+	// shares are relayed through this server, so it should stay below the
+	// server's own bandwidth. It is advertised to clients via /config.
+	LiveBandwidthMbps int `default:"4" split_words:"true"`
 }
 
 func (c Config) parsePortRange() (uint16, uint16, error) {

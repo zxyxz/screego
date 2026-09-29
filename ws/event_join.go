@@ -53,6 +53,11 @@ func (e *Join) Execute(rooms *Rooms, current ClientInfo) error {
 		if current.ID == user.ID || !user.Streaming {
 			continue
 		}
+		// Live shares bypass WebRTC entirely: the joiner receives the relayed
+		// stream via the viewer token in the room info instead.
+		if room.Live != nil && room.Live.HostID == user.ID {
+			continue
+		}
 		room.newSession(user.ID, current.ID, rooms, v4, v6)
 	}
 

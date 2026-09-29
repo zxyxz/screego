@@ -7,6 +7,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/screego/server/auth"
 	"github.com/screego/server/config"
+	"github.com/screego/server/live"
 	"github.com/screego/server/logger"
 	"github.com/screego/server/router"
 	"github.com/screego/server/server"
@@ -46,11 +47,13 @@ func serveCmd(version string) cli.Command {
 				log.Fatal().Err(err).Msg("could not start turn server")
 			}
 
-			rooms := ws.NewRooms(tServer, users, conf)
+			liveHub := live.New(conf)
+
+			rooms := ws.NewRooms(tServer, users, conf, liveHub)
 
 			go rooms.Start()
 
-			r := router.Router(conf, rooms, users, version)
+			r := router.Router(conf, rooms, users, version, liveHub)
 			if err := server.Start(r, conf.ServerAddress, conf.TLSCertFile, conf.TLSKeyFile); err != nil {
 				log.Fatal().Err(err).Msg("http server")
 			}

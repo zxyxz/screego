@@ -30,10 +30,10 @@ export const LoginForm = ({config: {login}, hide}: {config: UseConfig; hide?: ()
             <FormControl fullWidth>
                 <form onSubmit={submit}>
                     <div style={{display: 'flex', alignItems: 'center'}}>
-                        <Typography style={{flex: 1}}>Login to Screego</Typography>
+                        <Typography style={{flex: 1}}>登录 Screego</Typography>
                         {hide ? (
                             <Button variant="outlined" size="small" onClick={hide}>
-                                Go Back
+                                返回
                             </Button>
                         ) : undefined}
                     </div>
@@ -41,7 +41,7 @@ export const LoginForm = ({config: {login}, hide}: {config: UseConfig; hide?: ()
                         fullWidth
                         value={user}
                         onChange={(e) => setUser(e.target.value)}
-                        label="Username"
+                        label="用户名"
                         size="small"
                         margin="dense"
                     />
@@ -50,7 +50,7 @@ export const LoginForm = ({config: {login}, hide}: {config: UseConfig; hide?: ()
                         value={pass}
                         type="password"
                         onChange={(e) => setPass(e.target.value)}
-                        label="Password"
+                        label="密码"
                         size="small"
                         margin="dense"
                     />
@@ -62,7 +62,7 @@ export const LoginForm = ({config: {login}, hide}: {config: UseConfig; hide?: ()
                             fullWidth
                             variant="contained"
                         >
-                            Login
+                            登录
                         </LoadingButton>
                     </Box>
                 </form>

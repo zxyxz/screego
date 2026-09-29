@@ -26,6 +26,14 @@ type Room struct {
 	Mode              ConnectionMode
 	Users             map[xid.ID]*User
 	Sessions          map[xid.ID]*RoomSession
+	Live              *RoomLive
+}
+
+// RoomLive is set while a live (server relayed) share is running.
+type RoomLive struct {
+	HostID      xid.ID
+	HostToken   string
+	ViewerToken string
 }
 
 const (
@@ -124,9 +132,19 @@ func (r *Room) notifyInfoChanged() {
 			return left.Name < right.Name
 		})
 
+		var liveState *outgoing.LiveState
+		if r.Live != nil {
+			liveState = &outgoing.LiveState{
+				ViewerToken: r.Live.ViewerToken,
+				Self:        current.ID == r.Live.HostID,
+			}
+		}
+
 		current.WriteTimeout(outgoing.Room{
 			ID:    r.ID,
+			Mode:  outgoing.ConnectionMode(r.Mode),
 			Users: users,
+			Live:  liveState,
 		})
 	}
 }

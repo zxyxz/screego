@@ -38,7 +38,7 @@ const CreateRoom = ({room, config}: Pick<UseRoom, 'room'> & {config: UIConfig}) 
                     fullWidth
                     value={id}
                     onChange={(e) => setId(e.target.value)}
-                    label="id"
+                    label="房间号"
                     margin="dense"
                 />
                 <FormControlLabel
@@ -48,11 +48,11 @@ const CreateRoom = ({room, config}: Pick<UseRoom, 'room'> & {config: UIConfig}) 
                             onChange={(_, checked) => setOwnerLeave(checked)}
                         />
                     }
-                    label="Close Room after you leave"
+                    label="离开后关闭房间"
                 />
                 <Box paddingBottom={0.5}>
                     <Typography>
-                        Nat Traversal via:{' '}
+                        NAT 穿透方式：{' '}
                         <Link
                             href="https://screego.net/#/nat-traversal"
                             target="_blank"
@@ -63,7 +63,7 @@ const CreateRoom = ({room, config}: Pick<UseRoom, 'room'> & {config: UIConfig}) 
                     </Typography>
                 </Box>
                 <Button onClick={submit} fullWidth variant="contained">
-                    Create or Join a Room
+                    创建或加入房间
                 </Button>
             </FormControl>
         </div>
@@ -96,10 +96,10 @@ export const RoomManage = ({room, config}: {room: FCreateRoom; config: UseConfig
                     ) : (
                         <>
                             <Typography style={{display: 'flex', alignItems: 'center'}}>
-                                <span style={{flex: 1}}>Hello {config.user}!</span>{' '}
+                                <span style={{flex: 1}}>你好，{config.user}！</span>{' '}
                                 {config.loggedIn ? (
                                     <Button variant="outlined" size="small" onClick={config.logout}>
-                                        Logout
+                                        退出
                                     </Button>
                                 ) : (
                                     <Button
@@ -107,7 +107,7 @@ export const RoomManage = ({room, config}: {room: FCreateRoom; config: UseConfig
                                         size="small"
                                         onClick={() => setShowLogin(true)}
                                     >
-                                        Login
+                                        登录
                                     </Button>
                                 )}
                             </Typography>
