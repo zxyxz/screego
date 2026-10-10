@@ -34,11 +34,16 @@ export const LivePlayer = ({
     const generationRef = React.useRef(0);
     const reconnectTimer = React.useRef<number>(0);
     const attemptsRef = React.useRef(0);
+    const connectionCleanupRef = React.useRef<(() => void) | undefined>(undefined);
     const [starved, setStarved] = React.useState(false);
     const starveCountRef = React.useRef(0);
 
     const fullReset = React.useCallback(() => {
         generationRef.current++;
+        connectionCleanupRef.current?.();
+        connectionCleanupRef.current = undefined;
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = 0;
         startedRef.current = false;
         queueRef.current = [];
         sourceBufferRef.current = undefined;
@@ -53,6 +58,7 @@ export const LivePlayer = ({
         const video = videoRef.current;
         if (video) {
             video.pause();
+            video.playbackRate = 1;
             video.removeAttribute('src');
             video.load();
         }
@@ -101,8 +107,19 @@ export const LivePlayer = ({
         let lastFrames = 0;
         let lastDropped = 0;
         let lastBytes = 0;
+        const connectedAt = performance.now();
+        const failPlayback = (message: string) => {
+            if (generationRef.current !== generation) {
+                return;
+            }
+            fullReset();
+            fail(message);
+        };
 
         const pump = () => {
+            if (generationRef.current !== generation) {
+                return;
+            }
             const sourceBuffer = sourceBufferRef.current;
             if (!sourceBuffer || sourceBuffer.updating || queueRef.current.length === 0) {
                 return;
@@ -112,7 +129,7 @@ export const LivePlayer = ({
                 sourceBuffer.appendBuffer(chunk);
             } catch (e) {
                 console.error('appendBuffer failed', e);
-                fail('播放缓冲异常，正在重连…');
+                failPlayback('播放缓冲异常，请重新加入直播');
             }
         };
 
@@ -138,12 +155,20 @@ export const LivePlayer = ({
                 if (startAt > 0 && buffered.start(0) <= startAt) {
                     video.currentTime = startAt;
                 }
-                video.play().catch(() => {
-                    // autoplay rejected: try muted, sound stays toggleable
-                    video.muted = true;
-                    video.play().catch(() => undefined);
-                });
-                setStatus('playing');
+                video
+                    .play()
+                    .catch(() => {
+                        // autoplay rejected: try muted, sound stays toggleable
+                        video.muted = true;
+                        return video.play();
+                    })
+                    .then(() => {
+                        if (generationRef.current === generation) {
+                            attemptsRef.current = 0;
+                            setStatus('playing');
+                        }
+                    })
+                    .catch((e) => failPlayback(`无法开始播放：${e}`));
             }
             if (startedRef.current) {
                 const drift = behind - targetDelay;
@@ -197,7 +222,7 @@ export const LivePlayer = ({
                 typeof MediaSource === 'undefined' ||
                 !MediaSource.isTypeSupported(liveInfo.mimeType)
             ) {
-                fail(
+                failPlayback(
                     `你的浏览器不支持该编码（${liveInfo.videoCodec}）。请使用较新的 Chrome/Edge，或让主播选择 H.264 编码。`
                 );
                 return;
@@ -216,12 +241,12 @@ export const LivePlayer = ({
                         sourceBuffer.mode = 'segments';
                         sourceBuffer.addEventListener('updateend', pump);
                         sourceBuffer.addEventListener('error', () =>
-                            fail('解码数据异常，正在重连…')
+                            failPlayback('直播数据无法解码，请重新加入直播')
                         );
                         sourceBufferRef.current = sourceBuffer;
                         pump();
                     } catch (e) {
-                        fail(`无法初始化播放器：${e}`);
+                        failPlayback(`无法初始化播放器：${e}`);
                     }
                 },
                 {once: true}
@@ -242,7 +267,6 @@ export const LivePlayer = ({
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'info') {
-                        attemptsRef.current = 0;
                         info = msg as LiveInfo;
                         setupMSE(info);
                     }
@@ -285,14 +309,14 @@ export const LivePlayer = ({
                 return;
             }
             if (event.reason === '直播已结束') {
-                fail('直播已结束');
+                failPlayback('直播已结束');
                 return;
             }
             // Kicks ("带宽不足"), not-yet-started lives and network errors are
             // retryable; surface the server's reason and back off.
             attemptsRef.current += 1;
             if (attemptsRef.current > 8) {
-                fail(`多次连接失败（${event.reason || '网络异常'}）。`);
+                failPlayback(`多次连接失败（${event.reason || '网络异常'}）。`);
                 return;
             }
             setStatus('connecting');
@@ -315,6 +339,17 @@ export const LivePlayer = ({
                 return;
             }
             chase();
+            if (
+                !startedRef.current &&
+                performance.now() - connectedAt > Math.max(15000, (targetDelay + 10) * 1000)
+            ) {
+                failPlayback(
+                    initReceived
+                        ? '直播缓冲超时，请检查主播推流或网络连接'
+                        : '未收到直播视频数据，请检查主播是否成功推流'
+                );
+                return;
+            }
             const video = videoRef.current;
             const quality = video?.getVideoPlaybackQuality?.();
             const now = performance.now();
@@ -345,6 +380,18 @@ export const LivePlayer = ({
                 objectURL = '';
             }
         }, 1000);
+        const video = videoRef.current;
+        const onVideoError = () =>
+            failPlayback(`直播解码失败：${video?.error?.message || '浏览器无法播放该视频'}`);
+        video?.addEventListener('error', onVideoError);
+        connectionCleanupRef.current = () => {
+            clearInterval(interval);
+            video?.removeEventListener('error', onVideoError);
+            if (objectURL) {
+                URL.revokeObjectURL(objectURL);
+                objectURL = '';
+            }
+        };
     }, [fail, fullReset, roomID, token]);
 
     React.useEffect(() => {

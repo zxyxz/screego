@@ -633,11 +633,15 @@ export const useRoom = (config: UIConfig): UseRoom => {
                         {
                             liveBitrateMbps,
                             framerate: captureFramerate,
-                            onFail: (message) =>
+                            onFail: (message) => {
+                                if (stream.current === captured) {
+                                    stopShare();
+                                }
                                 enqueueSnackbar(`直播推流失败：${message}`, {
                                     variant: 'error',
                                     persist: true,
-                                }),
+                                });
+                            },
                             onStats: (stats) => {
                                 setLiveStats(stats);
                                 console.log('live push', stats);
@@ -667,14 +671,21 @@ export const useRoom = (config: UIConfig): UseRoom => {
                         }
                     )
                         .then((push) => {
-                            livePushRef.current = push;
+                            if (stream.current === captured) {
+                                livePushRef.current = push;
+                            } else {
+                                push.stop();
+                            }
                         })
-                        .catch((e) =>
+                        .catch((e) => {
+                            if (stream.current === captured) {
+                                stopShare();
+                            }
                             enqueueSnackbar(`直播启动失败：${e}`, {
                                 variant: 'error',
                                 persist: true,
-                            })
-                        );
+                            });
+                        });
                     resolve();
                 };
                 conn.current?.send(JSON.stringify({type: 'share', payload: {mode: 'live'}}));
@@ -685,6 +696,7 @@ export const useRoom = (config: UIConfig): UseRoom => {
     };
 
     const stopShare = () => {
+        liveStartRef.current = undefined;
         livePushRef.current?.stop();
         livePushRef.current = undefined;
         setLiveStats(undefined);

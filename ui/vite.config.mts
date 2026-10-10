@@ -8,7 +8,7 @@ export default defineConfig({
         port: 3000,
         open: false,
         proxy: {
-            '^/(config|logout|login|stream)$': {
+            '^/(config|logout|login|stream|live/ws)$': {
                 target: 'http://localhost:5050',
                 ws: true,
             },

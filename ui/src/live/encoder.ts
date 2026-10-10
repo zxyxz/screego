@@ -44,13 +44,15 @@ export const startLivePush = async (
     const settings = loadSettings();
     let running = true;
     let failed = false;
+    let cleanup: (() => void) | undefined;
 
     const fail = (message: string) => {
-        if (failed) {
+        if (failed || !running) {
             return;
         }
         failed = true;
         running = false;
+        cleanup?.();
         callbacks.onFail(message);
     };
 
@@ -96,6 +98,9 @@ export const startLivePush = async (
         | undefined;
     if (typeof VideoEncoder === 'undefined') {
         throw new Error('当前浏览器不支持 WebCodecs，直播共享需要较新的 Chrome/Edge');
+    }
+    if (typeof MediaStreamTrackProcessor === 'undefined') {
+        throw new Error('当前浏览器不支持视频帧采集，请使用较新的 Chrome/Edge');
     }
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
     // Probing only ranks candidates; the winner is decided by configure()
@@ -288,6 +293,7 @@ export const startLivePush = async (
 
     let muxer: Muxer<StreamTarget> | undefined;
     let audioEncoder: AudioEncoder | undefined;
+    let audioReader: ReadableStreamDefaultReader<any> | undefined;
     let audioConfigured = false;
     let channels = 2;
     let sampleRate = 48000;
@@ -295,21 +301,24 @@ export const startLivePush = async (
         const aSettings = audioTrack.getSettings();
         channels = Math.min(2, aSettings.channelCount ?? 2);
         sampleRate = aSettings.sampleRate ?? 48000;
-        audioEncoder = new AudioEncoder({
-            output: (chunk, meta) => muxer?.addAudioChunk(chunk, meta),
-            error: (e) => fail(`音频编码器错误：${e}`),
-        });
         try {
+            audioEncoder = new AudioEncoder({
+                output: (chunk, meta) => muxer?.addAudioChunk(chunk, meta),
+                error: (e) => fail(`音频编码器错误：${e}`),
+            });
             audioEncoder.configure({
                 codec: 'opus',
                 sampleRate,
                 numberOfChannels: channels,
                 bitrate: 128_000,
             });
+            // Only declare audio to the muxer after capture is available;
+            // a declared track without samples prevents all video fragments.
+            audioReader = new MediaStreamTrackProcessor({track: audioTrack}).readable.getReader();
             audioConfigured = true;
         } catch (e) {
             console.warn('audio encoder unavailable, streaming video only', e);
-            audioEncoder.close();
+            audioEncoder?.close();
             audioEncoder = undefined;
         }
     }
@@ -333,9 +342,11 @@ export const startLivePush = async (
         }
     }
     if (!chosen || !candidate) {
-        throw configureError instanceof Error
-            ? configureError
-            : new Error('视频编码器配置失败');
+        videoEncoder.close();
+        audioEncoder?.close();
+        void audioReader?.cancel();
+        socket.close();
+        throw configureError instanceof Error ? configureError : new Error('视频编码器配置失败');
     }
     console.log(
         'live encoder:',
@@ -351,10 +362,14 @@ export const startLivePush = async (
         target: new StreamTarget({onData}),
         fastStart: 'fragmented',
         minFragmentDuration: 1,
-        firstTimestampBehavior: 'cross-track-offset',
+        // Capture tracks can have different clock origins after a restart.
+        // Start each track at zero so audio cannot hold video in a long gap.
+        firstTimestampBehavior: 'offset',
         video: {codec: candidate.muxer, width, height},
         ...(audioConfigured
-            ? {audio: {codec: 'opus' as const, numberOfChannels: channels, sampleRate}}
+            ? // Opus decodes at 48 kHz even when the capture/encoder input is
+              // 44.1 kHz. The MP4 sample entry must describe the decoded rate.
+              {audio: {codec: 'opus' as const, numberOfChannels: channels, sampleRate: 48000}}
             : {}),
     });
 
@@ -369,10 +384,21 @@ export const startLivePush = async (
     };
     socket.send(JSON.stringify(info));
 
-    const cleanup = () => {
+    let lastFrame: VideoFrame | undefined;
+    let lastCaptureAt = 0;
+    let repeatTimer = 0;
+    let meter = 0;
+    let reader: ReadableStreamDefaultReader<any> | undefined;
+    cleanup = () => {
         // finalize() emits a trailing mfra box; drop anything from here on so
         // no stray bytes reach the viewers.
         stopping = true;
+        clearInterval(meter);
+        clearInterval(repeatTimer);
+        lastFrame?.close();
+        lastFrame = undefined;
+        void reader?.cancel().catch(() => undefined);
+        void audioReader?.cancel().catch(() => undefined);
         try {
             videoEncoder.close();
         } catch {
@@ -426,7 +452,7 @@ export const startLivePush = async (
     // are being dropped, the encoder cannot sustain the target framerate —
     // halve it cleanly instead of stutter-dropping every other frame.
     let overloadStreak = 0;
-    const meter = window.setInterval(() => {
+    meter = window.setInterval(() => {
         const instantMbps = ((sentBytes - lastSentBytes) * 8) / 1_000_000;
         rateHistory.push(instantMbps);
         if (rateHistory.length > 5) {
@@ -498,69 +524,101 @@ export const startLivePush = async (
         lastSentBytes = sentBytes;
     }, 1000);
 
-    const processor = new MediaStreamTrackProcessor({track: videoTrack});
-    const reader = processor.readable.getReader();
+    let lastEncodedTimestamp = -1;
+    const encodeFrame = (frame: VideoFrame) => {
+        const timestamp = frame.timestamp;
+        const frameIntervalUs = 1_000_000 / activeFramerate;
+        if (
+            !running ||
+            (lastEncodedTimestamp >= 0 &&
+                timestamp - lastEncodedTimestamp < frameIntervalUs * 0.9) ||
+            videoEncoder.encodeQueueSize > 30
+        ) {
+            recentDropped++;
+            return;
+        }
+        const keyFrame = timestamp - lastKeyTimestamp >= 2_000_000;
+        videoEncoder.encode(frame, {keyFrame});
+        lastEncodedTimestamp = timestamp;
+        if (keyFrame) {
+            lastKeyTimestamp = timestamp;
+        }
+        recentFrames++;
+    };
+
+    // Screen capture may emit nothing while the image is unchanged. Repeating
+    // the latest image advances MP4 timestamps and its keyframe boundaries.
+    repeatTimer = window.setInterval(() => {
+        if (!running || !lastFrame) {
+            return;
+        }
+        const elapsed = performance.now() - lastCaptureAt;
+        if (elapsed < 250) {
+            return;
+        }
+        const frame = new VideoFrame(lastFrame, {
+            timestamp: lastFrame.timestamp + Math.round(elapsed * 1000),
+        });
+        try {
+            encodeFrame(frame);
+        } catch (e) {
+            fail(`视频编码中断：${e}`);
+        } finally {
+            frame.close();
+        }
+    }, 200);
+
+    try {
+        reader = new MediaStreamTrackProcessor({track: videoTrack}).readable.getReader();
+    } catch (e) {
+        running = false;
+        cleanup();
+        throw e;
+    }
     (async () => {
-        let lastEncodedTimestamp = -1;
         while (running) {
-            const {value: frame, done} = await reader.read();
+            const {value: frame, done} = await reader!.read();
             if (done || !frame) {
                 break;
             }
-            const timestamp = frame.timestamp ?? 0;
             recentCaptured++;
-            const frameIntervalUs = 1_000_000 / activeFramerate;
-            // The capture may run faster than the configured framerate: thin
-            // the surplus so the encoder really runs at that rate. 0.9 leaves
-            // room for capture jitter without dropping frames when source and
-            // target framerate match.
-            if (
-                lastEncodedTimestamp >= 0 &&
-                timestamp - lastEncodedTimestamp < frameIntervalUs * 0.9
-            ) {
-                recentDropped++;
+            if (!running) {
                 frame.close();
-                continue;
+                break;
             }
-            // Force keyframes every 2s: fragments are keyframe aligned, so
-            // this bounds the rewind needed by late joining viewers.
-            const keyFrame = timestamp - lastKeyTimestamp >= 2_000_000;
-            if (videoEncoder.encodeQueueSize > 30) {
-                // encoder cannot keep up; drop this frame
-                recentDropped++;
+            lastFrame?.close();
+            lastFrame = frame.clone();
+            lastCaptureAt = performance.now();
+            try {
+                encodeFrame(frame);
+            } finally {
                 frame.close();
-                continue;
             }
-            videoEncoder.encode(frame, {keyFrame});
-            lastEncodedTimestamp = timestamp;
-            if (keyFrame) {
-                lastKeyTimestamp = timestamp;
-            }
-            frame.close();
-            recentFrames++;
         }
     })().catch((e) => fail(`视频采集中断：${e}`));
 
-    if (audioTrack && audioEncoder) {
-        const audioProcessor = new MediaStreamTrackProcessor({track: audioTrack});
-        const audioReader = audioProcessor.readable.getReader();
+    if (audioReader && audioEncoder) {
         (async () => {
             while (running) {
-                const {value: data, done} = await audioReader.read();
+                const {value: data, done} = await audioReader!.read();
                 if (done || !data) {
                     break;
                 }
-                audioEncoder.encode(data);
-                data.close();
+                try {
+                    if (running) {
+                        audioEncoder!.encode(data);
+                    }
+                } finally {
+                    data.close();
+                }
             }
-        })().catch((e) => console.warn('audio capture stopped', e));
+        })().catch((e) => fail(`音频采集中断：${e}`));
     }
 
     return {
         stop: () => {
             running = false;
-            clearInterval(meter);
-            cleanup();
+            cleanup?.();
         },
     };
 };
